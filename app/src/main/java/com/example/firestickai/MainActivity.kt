@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : Activity() {
     private var selectedImageUri: Uri? = null
     private val REQUEST_PICK_IMAGE = 1001
-    private val prefs by lazy { getSharedPreferences("spicy", 0) }
+    private val prefs by lazy { getSharedPreferences("venice", 0) }
     private lateinit var status: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,12 +33,12 @@ class MainActivity : Activity() {
             val scroll = ScrollView(this).apply { addView(root) }
 
             val title = TextView(this).apply {
-                text = "Uncensored AI"
+                text = "Uncensored AI (Venice)"
                 textSize = 28f
                 setTextColor(0xFFFFFFFF.toInt())
             }
             status = TextView(this).apply {
-                text = "Ready. Select a reference or set your API key."
+                text = "Ready. Select a reference or set your Venice API key."
                 textSize = 18f
                 setTextColor(0xFFCCCCCC.toInt())
                 setPadding(0, 16, 0, 24)
@@ -58,9 +58,8 @@ class MainActivity : Activity() {
             root.addView(title)
             root.addView(status)
             root.addView(makeButton("Select / Upload Reference") { pickImage() })
-            root.addView(makeButton("Set API Key") { promptForApiKey() })
-            root.addView(makeButton("Create Image") { promptAndGenerate("image") })
-            root.addView(makeButton("Animate This") { promptAndGenerate("video") })
+            root.addView(makeButton("Set Venice API Key") { promptForApiKey() })
+            root.addView(makeButton("Edit Image (Qwen Uncensored)") { promptAndGenerate() })
 
             setContentView(scroll)
         } catch (e: Exception) {
@@ -92,55 +91,55 @@ class MainActivity : Activity() {
     }
 
     private fun promptForApiKey() {
-        val input = EditText(this).apply { hint = "Paste SpicyAPI key" }
+        val input = EditText(this).apply { hint = "Paste Venice API key" }
         AlertDialog.Builder(this)
-            .setTitle("SpicyAPI Key")
+            .setTitle("Venice API Key")
             .setView(input)
             .setPositiveButton("Save") { _, _ ->
                 prefs.edit().putString("key", input.text.toString().trim()).apply()
-                status.text = "API key saved"
+                status.text = "Venice API key saved"
                 Toast.makeText(this, "Key saved", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun promptAndGenerate(mode: String) {
+    private fun promptAndGenerate() {
         val key = prefs.getString("key", null)
         if (key.isNullOrBlank()) {
-            Toast.makeText(this, "Set API key first", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Set Venice API key first", Toast.LENGTH_SHORT).show()
             return
         }
-        if (selectedImageUri == null && mode == "image") {
+        if (selectedImageUri == null) {
             Toast.makeText(this, "Select a reference image first", Toast.LENGTH_SHORT).show()
             return
         }
         val input = EditText(this).apply {
-            hint = "Enter prompt"
+            hint = "Enter edit prompt"
             setText("edit this image, keep the person, high quality")
         }
         AlertDialog.Builder(this)
-            .setTitle("Prompt for $mode")
+            .setTitle("Prompt for edit")
             .setView(input)
             .setPositiveButton("Generate") { _, _ ->
                 val prompt = input.text.toString().trim()
-                if (prompt.isNotBlank()) generate(mode, prompt, key)
+                if (prompt.isNotBlank()) generate(prompt, key)
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun generate(mode: String, prompt: String, key: String) {
-        status.text = "Sending to SpicyAPI..."
+    private fun generate(prompt: String, key: String) {
+        status.text = "Sending to Venice (Qwen Uncensored)..."
         CoroutineScope(Dispatchers.IO).launch {
-            val client = SpicyApiClient(key)
-            val resultUrl = client.generateImage(prompt, if (selectedImageUri != null) "https://example.com/ref.jpg" else null)
+            val client = VeniceApiClient(key, this@MainActivity)
+            val result = client.editImage(prompt, selectedImageUri)
             withContext(Dispatchers.Main) {
-                if (resultUrl != null) {
-                    status.text = "Done: $resultUrl"
+                if (result != null) {
+                    status.text = "Done: $result"
                     Toast.makeText(this@MainActivity, "Generation finished", Toast.LENGTH_LONG).show()
                 } else {
-                    status.text = "Failed — check key or balance"
+                    status.text = "Failed — check key, balance, or image"
                     Toast.makeText(this@MainActivity, "Generation failed", Toast.LENGTH_LONG).show()
                 }
             }
