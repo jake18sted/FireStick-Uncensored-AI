@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Leanback" parent="Theme.Leanback">
+    <style name="Theme.Leanback" parent="Theme.AppCompat.Leanback">
         <item name="android:windowBackground">@android:color/black</item>
     </style>
 </resources>
