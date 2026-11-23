@@ -1,17 +1,36 @@
 package com.example.firestickai
 
+import android.app.Activity
 import android.os.Bundle
-import androidx.fragment.app.FragmentActivity
-import androidx.leanback.app.BrowseSupportFragment
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
 
-class MainActivity : FragmentActivity() {
+class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        if (savedInstanceState == null) {
-            supportFragmentManager.beginTransaction()
-                .replace(R.id.main_browse_fragment, MainFragment())
-                .commit()
+        try {
+            val layout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(0xFF000000.toInt())
+                setPadding(48, 48, 48, 48)
+            }
+            val title = TextView(this).apply {
+                text = "Uncensored AI - Running"
+                textSize = 32f
+                setTextColor(0xFFFFFFFF.toInt())
+            }
+            val info = TextView(this).apply {
+                text = "If you see this, the app launched successfully.\nNext version will add image picker and generation."
+                textSize = 20f
+                setTextColor(0xFFCCCCCC.toInt())
+                setPadding(0, 32, 0, 0)
+            }
+            layout.addView(title)
+            layout.addView(info)
+            setContentView(layout)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 }
