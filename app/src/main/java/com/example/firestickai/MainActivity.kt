@@ -60,6 +60,7 @@ class MainActivity : Activity() {
             root.addView(makeButton("Select / Upload Reference") { pickImage() })
             root.addView(makeButton("Set Venice API Key") { promptForApiKey() })
             root.addView(makeButton("Edit Image (Qwen Uncensored)") { promptAndGenerate() })
+            root.addView(makeButton("Animate This (Ovi Uncensored Video)") { promptAndAnimate() })
 
             setContentView(scroll)
         } catch (e: Exception) {
@@ -129,6 +130,31 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun promptAndAnimate() {
+        val key = prefs.getString("key", null)
+        if (key.isNullOrBlank()) {
+            Toast.makeText(this, "Set Venice API key first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (selectedImageUri == null) {
+            Toast.makeText(this, "Select a reference image first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val input = EditText(this).apply {
+            hint = "Enter motion prompt"
+            setText("gentle camera push in, natural motion")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Motion prompt for video (Ovi)")
+            .setView(input)
+            .setPositiveButton("Animate") { _, _ ->
+                val prompt = input.text.toString().trim()
+                if (prompt.isNotBlank()) animate(prompt, key)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun generate(prompt: String, key: String) {
         status.text = "Sending to Venice (Qwen Uncensored)..."
         CoroutineScope(Dispatchers.IO).launch {
@@ -136,11 +162,28 @@ class MainActivity : Activity() {
             val result = client.editImage(prompt, selectedImageUri)
             withContext(Dispatchers.Main) {
                 if (result != null) {
-                    status.text = "Done: $result"
-                    Toast.makeText(this@MainActivity, "Generation finished", Toast.LENGTH_LONG).show()
+                    status.text = "Image done: $result"
+                    Toast.makeText(this@MainActivity, "Image generation finished", Toast.LENGTH_LONG).show()
                 } else {
-                    status.text = "Failed — check key, balance, or image"
-                    Toast.makeText(this@MainActivity, "Generation failed", Toast.LENGTH_LONG).show()
+                    status.text = "Image failed — check key, balance, or image"
+                    Toast.makeText(this@MainActivity, "Image generation failed", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun animate(prompt: String, key: String) {
+        status.text = "Queueing uncensored video (Ovi)... this can take 1-2 minutes"
+        CoroutineScope(Dispatchers.IO).launch {
+            val client = VeniceApiClient(key, this@MainActivity)
+            val result = client.animateImage(prompt, selectedImageUri)
+            withContext(Dispatchers.Main) {
+                if (result != null) {
+                    status.text = "Video ready: $result"
+                    Toast.makeText(this@MainActivity, "Video generation finished", Toast.LENGTH_LONG).show()
+                } else {
+                    status.text = "Video failed — check key, balance, or try again"
+                    Toast.makeText(this@MainActivity, "Video generation failed", Toast.LENGTH_LONG).show()
                 }
             }
         }
