@@ -1,11 +1,12 @@
 package com.example.firestickai
 
+import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.EditText
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.leanback.app.BrowseSupportFragment
 import androidx.leanback.widget.ArrayObjectAdapter
 import androidx.leanback.widget.HeaderItem
@@ -20,25 +21,45 @@ import kotlinx.coroutines.withContext
 class MainFragment : BrowseSupportFragment() {
     private var selectedImageUri: Uri? = null
     private val prefs by lazy { requireContext().getSharedPreferences("spicy", 0) }
-
-    private val imagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        uri?.let {
-            selectedImageUri = it
-            Toast.makeText(requireContext(), "Image selected: ${it.lastPathSegment}", Toast.LENGTH_LONG).show()
-        }
-    }
+    private val REQUEST_PICK_IMAGE = 1001
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
-        title = "Uncensored AI"
-        setupRows()
-        onItemViewClickedListener = OnItemViewClickedListener { _, item, _, _ ->
-            when (item) {
-                "Select / Upload Reference" -> imagePicker.launch("image/*")
-                "Set API Key" -> promptForApiKey()
-                "Create Image" -> promptAndGenerate("image")
-                "Animate This" -> promptAndGenerate("video")
-                "Playlist" -> Toast.makeText(requireContext(), "Playlist next", Toast.LENGTH_SHORT).show()
+        try {
+            title = "Uncensored AI"
+            setupRows()
+            onItemViewClickedListener = OnItemViewClickedListener { _, item, _, _ ->
+                when (item) {
+                    "Select / Upload Reference" -> pickImage()
+                    "Set API Key" -> promptForApiKey()
+                    "Create Image" -> promptAndGenerate("image")
+                    "Animate This" -> promptAndGenerate("video")
+                    "Playlist" -> Toast.makeText(requireContext(), "Playlist next", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "Startup error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun pickImage() {
+        try {
+            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "image/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }
+            startActivityForResult(Intent.createChooser(intent, "Select Reference"), REQUEST_PICK_IMAGE)
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "No image picker available. Transfer images to Downloads first.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_PICK_IMAGE && resultCode == Activity.RESULT_OK) {
+            data?.data?.let {
+                selectedImageUri = it
+                Toast.makeText(requireContext(), "Image selected", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -98,13 +119,12 @@ class MainFragment : BrowseSupportFragment() {
         Toast.makeText(requireContext(), "Sending to SpicyAPI...", Toast.LENGTH_SHORT).show()
         CoroutineScope(Dispatchers.IO).launch {
             val client = SpicyApiClient(key)
-            // Note: real upload of local URI requires hosting the image first; this uses a placeholder URL for now
             val resultUrl = client.generateImage(prompt, if (selectedImageUri != null) "https://example.com/ref.jpg" else null)
             withContext(Dispatchers.Main) {
                 if (resultUrl != null) {
                     Toast.makeText(requireContext(), "Done: $resultUrl", Toast.LENGTH_LONG).show()
                 } else {
-                    Toast.makeText(requireContext(), "Failed — check key / balance / image URL", Toast.LENGTH_LONG).show()
+                    Toast.makeText(requireContext(), "Failed — check key / balance", Toast.LENGTH_LONG).show()
                 }
             }
         }
