@@ -32,12 +32,12 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply { addView(root) }
 
         val title = TextView(this).apply {
-            text = "Uncensored AI (Venice)"
+            text = "Uncensored AI (Venice) v1.7"
             textSize = 26f
             setTextColor(0xFFFFFFFF.toInt())
         }
         status = TextView(this).apply {
-            text = "Ready. Select reference or generate from prompt."
+            text = "Ready. Seedream/Seedance models. Select reference or generate from prompt."
             textSize = 16f
             setTextColor(0xFFCCCCCC.toInt())
             setPadding(0, 8, 0, 16)
@@ -67,10 +67,10 @@ class MainActivity : Activity() {
         root.addView(btn("Set Venice API Key") { setKey() })
         root.addView(btn("Edit Image (with reference)") { doEdit() })
         root.addView(btn("Animate Video (with reference)") { doAnimate(true) })
-        root.addView(btn("Generate Image (prompt only)") { doGenerateImage() })
-        root.addView(btn("Generate Video (prompt only)") { doAnimate(false) })
+        root.addView(btn("Generate Image (prompt only - Seedream)") { doGenerateImage() })
+        root.addView(btn("Generate Video (prompt only - Seedance)") { doAnimate(false) })
         root.addView(TextView(this).apply {
-            text = "Saved Results (click to view full screen):"
+            text = "Saved Results (click to view full screen, Save to Downloads):"
             textSize = 18f
             setTextColor(0xFFFFFFFF.toInt())
             setPadding(0, 16, 0, 8)
@@ -196,7 +196,7 @@ class MainActivity : Activity() {
         val k = key() ?: return toast("Set key first")
         val input = EditText(this).apply { hint = "Image prompt" }
         AlertDialog.Builder(this)
-            .setTitle("Generate image (Lustify uncensored)")
+            .setTitle("Generate image (Seedream V5.5 uncensored)")
             .setView(input)
             .setPositiveButton("Go") { _, _ ->
                 val p = input.text.toString()
@@ -217,10 +217,10 @@ class MainActivity : Activity() {
         val k = key() ?: return toast("Set key first")
         if (withRef && selectedImageUri == null) return toast("Select reference first")
         val input = EditText(this).apply { hint = "Motion prompt" }
-        val dur = arrayOf("5s", "8s")
+        val dur = arrayOf("5s", "8s", "10s")
         var selectedDur = "5s"
         AlertDialog.Builder(this)
-            .setTitle(if (withRef) "Animate (Wan Enhanced)" else "Generate video (prompt only)")
+            .setTitle(if (withRef) "Animate (Seedance 2.5)" else "Generate video (Seedance prompt only)")
             .setView(input)
             .setSingleChoiceItems(dur, 0) { _, which -> selectedDur = dur[which] }
             .setPositiveButton("Go") { _, _ ->

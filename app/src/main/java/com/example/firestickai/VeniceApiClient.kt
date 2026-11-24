@@ -66,12 +66,13 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
     }
 
     fun generateImage(prompt: String): File? {
+        // Seedream V5.5: Anonymized Uncensored, high quality
         val json = JSONObject().apply {
-            put("model", "lustify-v8")
+            put("model", "seedream-v5-5")
             put("prompt", prompt)
             put("safe_mode", false)
-            put("width", 1024)
-            put("height", 1024)
+            put("aspect_ratio", "1:1")
+            put("resolution", "1K")
             put("format", "jpeg")
         }
         val req = Request.Builder()
@@ -90,7 +91,8 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
 
     fun animateImage(prompt: String, imageUri: Uri?, duration: String = "5s"): File? {
         val isI2V = imageUri != null
-        val model = if (isI2V) "wan-2-2-enhanced-image-to-video" else "wan-2-7-text-to-video"
+        // Seedance 2.5: supports 4-30s, better quality, anonymized
+        val model = if (isI2V) "seedance-2-5-image-to-video-basic" else "seedance-2-5-text-to-video-basic"
         val dataUrl = if (isI2V) {
             val b64 = uriToBase64(imageUri!!) ?: return null
             "data:image/jpeg;base64,$b64"
@@ -101,6 +103,8 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
             put("prompt", prompt)
             if (dataUrl != null) put("image_url", dataUrl)
             put("duration", duration)
+            put("resolution", "720p")
+            put("aspect_ratio", "16:9")
         }
         val req = Request.Builder()
             .url("https://api.venice.ai/api/v1/video/queue")
@@ -116,7 +120,7 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
                 val usedModel = j.optString("model", model)
                 if (qid.isBlank()) return null
 
-                for (i in 1..36) {
+                for (i in 1..48) {  // longer poll for 8s+
                     Thread.sleep(5000)
                     val poll = JSONObject().apply {
                         put("model", usedModel)
