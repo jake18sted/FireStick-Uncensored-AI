@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 17
@@ -25,8 +27,21 @@ jobs:
         run: chmod +x ./gradlew
       - name: Build Release APK
         run: ./gradlew :app:assembleRelease --stacktrace --no-daemon
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: FireStick-Uncensored-AI-APK
           path: app/build/outputs/apk/release/*.apk
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.7
+          name: v1.7 - Seedream + Seedance (uncensored)
+          body: |
+            v1.7: Switch to Seedream V5.5 (uncensored) for prompt-only images and Seedance 2.5 for videos (5s/8s+ support, better uncensored).
+            
+            Direct download: https://github.com/jake18sted/FireStick-Uncensored-AI/releases/download/v1.7/app-release.apk
+          files: app/build/outputs/apk/release/*.apk
+          draft: false
+          prerelease: false
+          make_latest: true
