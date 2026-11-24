@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.*
 import kotlinx.coroutines.*
+import org.json.JSONArray
 import java.io.File
 
 class MainActivity : Activity() {
@@ -21,6 +22,8 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        loadResults()
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFF000000.toInt())
@@ -44,9 +47,7 @@ class MainActivity : Activity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
             setBackgroundColor(0xFF222222.toInt())
             isFocusable = true
-            setOnClickListener {
-                selectedImageUri?.let { openViewer(it, false) }
-            }
+            setOnClickListener { selectedImageUri?.let { openViewer(it, false) } }
         }
 
         fun btn(label: String, action: () -> Unit) = Button(this).apply {
@@ -69,7 +70,7 @@ class MainActivity : Activity() {
         root.addView(btn("Generate Image (prompt only)") { doGenerateImage() })
         root.addView(btn("Generate Video (prompt only)") { doAnimate(false) })
         root.addView(TextView(this).apply {
-            text = "Results (click to view full screen):"
+            text = "Saved Results (click to view full screen):"
             textSize = 18f
             setTextColor(0xFFFFFFFF.toInt())
             setPadding(0, 16, 0, 8)
@@ -77,6 +78,54 @@ class MainActivity : Activity() {
         root.addView(resultsContainer)
 
         setContentView(scroll)
+        refreshResultsUI()
+    }
+
+    private fun loadResults() {
+        val json = prefs.getString("results", "[]") ?: "[]"
+        try {
+            val arr = JSONArray(json)
+            results.clear()
+            for (i in 0 until arr.length()) {
+                val f = File(arr.getString(i))
+                if (f.exists()) results.add(f)
+            }
+        } catch (e: Exception) {}
+    }
+
+    private fun saveResults() {
+        val arr = JSONArray()
+        results.forEach { arr.put(it.absolutePath) }
+        prefs.edit().putString("results", arr.toString()).apply()
+    }
+
+    private fun refreshResultsUI() {
+        resultsContainer.removeAllViews()
+        results.forEach { file ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 8, 0, 8)
+            }
+            val thumb = ImageView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(200, 150)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                isFocusable = true
+                if (file.name.endsWith("jpg") || file.name.endsWith("jpeg") || file.name.endsWith("png")) {
+                    setImageBitmap(BitmapFactory.decodeFile(file.absolutePath))
+                } else {
+                    setBackgroundColor(0xFF444444.toInt())
+                }
+                setOnClickListener { openViewer(Uri.fromFile(file), file.name.endsWith("mp4")) }
+            }
+            val saveBtn = Button(this).apply {
+                text = "Save"
+                isFocusable = true
+                setOnClickListener { saveToDownloads(file) }
+            }
+            row.addView(thumb)
+            row.addView(saveBtn)
+            resultsContainer.addView(row)
+        }
     }
 
     private fun pickImage() {
@@ -98,8 +147,7 @@ class MainActivity : Activity() {
                 selectedImageUri = it
                 try {
                     contentResolver.openInputStream(it)?.use { stream ->
-                        val bmp = BitmapFactory.decodeStream(stream)
-                        preview.setImageBitmap(bmp)
+                        preview.setImageBitmap(BitmapFactory.decodeStream(stream))
                     }
                 } catch (e: Exception) {}
                 status.text = "Reference selected"
@@ -148,7 +196,7 @@ class MainActivity : Activity() {
         val k = key() ?: return toast("Set key first")
         val input = EditText(this).apply { hint = "Image prompt" }
         AlertDialog.Builder(this)
-            .setTitle("Generate image (no reference)")
+            .setTitle("Generate image (Lustify uncensored)")
             .setView(input)
             .setPositiveButton("Go") { _, _ ->
                 val p = input.text.toString()
@@ -172,7 +220,7 @@ class MainActivity : Activity() {
         val dur = arrayOf("5s", "8s")
         var selectedDur = "5s"
         AlertDialog.Builder(this)
-            .setTitle(if (withRef) "Animate (with reference)" else "Generate video (prompt only)")
+            .setTitle(if (withRef) "Animate (Wan Enhanced)" else "Generate video (prompt only)")
             .setView(input)
             .setSingleChoiceItems(dur, 0) { _, which -> selectedDur = dur[which] }
             .setPositiveButton("Go") { _, _ ->
@@ -192,31 +240,9 @@ class MainActivity : Activity() {
 
     private fun addResult(file: File) {
         results.add(0, file)
+        saveResults()
         status.text = "Done: ${file.name}"
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 8, 0, 8)
-        }
-        val thumb = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(200, 150)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            isFocusable = true
-            if (file.name.endsWith("jpg")) {
-                setImageBitmap(BitmapFactory.decodeFile(file.absolutePath))
-            } else {
-                setBackgroundColor(0xFF444444.toInt())
-                // simple video indicator
-            }
-            setOnClickListener { openViewer(Uri.fromFile(file), file.name.endsWith("mp4")) }
-        }
-        val saveBtn = Button(this).apply {
-            text = "Save"
-            isFocusable = true
-            setOnClickListener { saveToDownloads(file) }
-        }
-        row.addView(thumb)
-        row.addView(saveBtn)
-        resultsContainer.addView(row, 0)
+        refreshResultsUI()
     }
 
     private fun openViewer(uri: Uri, isVideo: Boolean) {

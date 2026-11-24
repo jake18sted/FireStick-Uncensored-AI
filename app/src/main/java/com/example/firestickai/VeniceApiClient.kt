@@ -19,20 +19,26 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    private fun uriToBase64(uri: Uri): String? {
-        return try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                Base64.encodeToString(input.readBytes(), Base64.NO_WRAP)
-            }
-        } catch (e: Exception) { null }
-    }
+    private fun uriToBase64(uri: Uri): String? = try {
+        context.contentResolver.openInputStream(uri)?.use { Base64.encodeToString(it.readBytes(), Base64.NO_WRAP) }
+    } catch (e: Exception) { null }
 
-    private fun saveBytes(bytes: ByteArray, ext: String): File? {
+    private fun saveBytes(bytes: ByteArray, ext: String): File? = try {
+        val dir = context.getExternalFilesDir(null) ?: context.filesDir
+        val file = File(dir, "result_${System.currentTimeMillis()}.$ext")
+        FileOutputStream(file).use { it.write(bytes) }
+        file
+    } catch (e: Exception) { null }
+
+    private fun extractImageBytes(responseBody: String?, contentType: String?): ByteArray? {
+        if (responseBody == null) return null
+        if (contentType?.contains("image") == true) return responseBody.toByteArray()
         return try {
-            val dir = context.getExternalFilesDir(null) ?: context.filesDir
-            val file = File(dir, "result_${System.currentTimeMillis()}.$ext")
-            FileOutputStream(file).use { it.write(bytes) }
-            file
+            val j = JSONObject(responseBody)
+            val b64 = j.optJSONArray("images")?.optString(0)
+                ?: j.optJSONObject("data")?.optString("b64_json")
+                ?: j.optString("b64_json")
+            if (!b64.isNullOrBlank()) Base64.decode(b64, Base64.DEFAULT) else null
         } catch (e: Exception) { null }
     }
 
@@ -53,7 +59,7 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
         return try {
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return null
-                val bytes = resp.body?.bytes() ?: return null
+                val bytes = extractImageBytes(resp.body?.string(), resp.header("Content-Type")) ?: return null
                 saveBytes(bytes, "jpg")
             }
         } catch (e: Exception) { null }
@@ -61,11 +67,12 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
 
     fun generateImage(prompt: String): File? {
         val json = JSONObject().apply {
-            put("model", "flux-dev-uncensored") // or qwen-image or similar uncensored
+            put("model", "lustify-v8")
             put("prompt", prompt)
             put("safe_mode", false)
             put("width", 1024)
             put("height", 1024)
+            put("format", "jpeg")
         }
         val req = Request.Builder()
             .url("https://api.venice.ai/api/v1/image/generate")
@@ -75,20 +82,22 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
         return try {
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return null
-                val bytes = resp.body?.bytes() ?: return null
+                val bytes = extractImageBytes(resp.body?.string(), resp.header("Content-Type")) ?: return null
                 saveBytes(bytes, "jpg")
             }
         } catch (e: Exception) { null }
     }
 
     fun animateImage(prompt: String, imageUri: Uri?, duration: String = "5s"): File? {
-        val dataUrl = if (imageUri != null) {
-            val b64 = uriToBase64(imageUri) ?: return null
+        val isI2V = imageUri != null
+        val model = if (isI2V) "wan-2-2-enhanced-image-to-video" else "wan-2-7-text-to-video"
+        val dataUrl = if (isI2V) {
+            val b64 = uriToBase64(imageUri!!) ?: return null
             "data:image/jpeg;base64,$b64"
         } else null
 
         val json = JSONObject().apply {
-            put("model", if (dataUrl != null) "ovi-image-to-video" else "wan-2-7-text-to-video")
+            put("model", model)
             put("prompt", prompt)
             if (dataUrl != null) put("image_url", dataUrl)
             put("duration", duration)
@@ -104,13 +113,13 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
                 if (!resp.isSuccessful) return null
                 val j = JSONObject(resp.body?.string() ?: return null)
                 val qid = j.optString("queue_id")
-                val model = j.optString("model")
+                val usedModel = j.optString("model", model)
                 if (qid.isBlank()) return null
 
-                for (i in 1..40) {
+                for (i in 1..36) {
                     Thread.sleep(5000)
                     val poll = JSONObject().apply {
-                        put("model", model)
+                        put("model", usedModel)
                         put("queue_id", qid)
                     }
                     val pr = Request.Builder()
@@ -120,7 +129,7 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
                         .build()
                     client.newCall(pr).execute().use { prr ->
                         val ct = prr.header("Content-Type") ?: ""
-                        if (prr.isSuccessful && (ct.contains("video") || ct.contains("octet"))) {
+                        if (prr.isSuccessful && (ct.contains("video") || ct.contains("octet-stream"))) {
                             val bytes = prr.body?.bytes() ?: return null
                             return saveBytes(bytes, "mp4")
                         }
