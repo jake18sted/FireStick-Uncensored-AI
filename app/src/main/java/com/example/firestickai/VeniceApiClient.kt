@@ -12,6 +12,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 
+data class GenResult(val file: File? = null, val error: String? = null)
+
 class VeniceApiClient(private val apiKey: String, private val context: Context) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -30,11 +32,16 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
         file
     } catch (e: Exception) { null }
 
-    private fun isViolation(resp: okhttp3.Response): Boolean {
+    private fun violationReason(resp: okhttp3.Response): String? {
         val blurred = resp.header("x-venice-is-blurred") == "true"
         val violation = resp.header("x-venice-is-content-violation") == "true"
         val adultViolation = resp.header("x-venice-is-adult-model-content-violation") == "true"
-        return blurred || violation || adultViolation
+        return when {
+            adultViolation -> "Adult-model content violation"
+            violation -> "Content policy violation"
+            blurred -> "Image was blurred (safe mode or policy)"
+            else -> null
+        }
     }
 
     private fun extractImageBytes(responseBody: String?, contentType: String?): ByteArray? {
@@ -49,9 +56,9 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
         } catch (e: Exception) { null }
     }
 
-    fun editImage(prompt: String, imageUri: Uri?): File? {
-        if (imageUri == null) return null
-        val base64 = uriToBase64(imageUri) ?: return null
+    fun editImage(prompt: String, imageUri: Uri?): GenResult {
+        if (imageUri == null) return GenResult(error = "No reference image")
+        val base64 = uriToBase64(imageUri) ?: return GenResult(error = "Could not read reference image")
         val json = JSONObject().apply {
             put("model", "qwen-edit-uncensored")
             put("prompt", prompt)
@@ -65,15 +72,20 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
             .build()
         return try {
             client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful || isViolation(resp)) return null
-                val bytes = extractImageBytes(resp.body?.string(), resp.header("Content-Type")) ?: return null
-                saveBytes(bytes, "jpg")
+                val reason = violationReason(resp)
+                if (reason != null) return GenResult(error = reason)
+                if (!resp.isSuccessful) return GenResult(error = "HTTP ${resp.code}: ${resp.body?.string()?.take(200)}")
+                val bytes = extractImageBytes(resp.body?.string(), resp.header("Content-Type"))
+                    ?: return GenResult(error = "No image data in response")
+                val file = saveBytes(bytes, "jpg") ?: return GenResult(error = "Failed to save file")
+                GenResult(file = file)
             }
-        } catch (e: Exception) { null }
+        } catch (e: Exception) {
+            GenResult(error = e.message ?: "Network/edit error")
+        }
     }
 
-    fun generateImage(prompt: String): File? {
-        // Lustify v8: explicitly uncensored photoreal model designed for adult content
+    fun generateImage(prompt: String): GenResult {
         val json = JSONObject().apply {
             put("model", "lustify-v8")
             put("prompt", prompt)
@@ -88,19 +100,24 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
             .build()
         return try {
             client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful || isViolation(resp)) return null
-                val bytes = extractImageBytes(resp.body?.string(), resp.header("Content-Type")) ?: return null
-                saveBytes(bytes, "jpg")
+                val reason = violationReason(resp)
+                if (reason != null) return GenResult(error = reason)
+                if (!resp.isSuccessful) return GenResult(error = "HTTP ${resp.code}: ${resp.body?.string()?.take(200)}")
+                val bytes = extractImageBytes(resp.body?.string(), resp.header("Content-Type"))
+                    ?: return GenResult(error = "No image data in response")
+                val file = saveBytes(bytes, "jpg") ?: return GenResult(error = "Failed to save file")
+                GenResult(file = file)
             }
-        } catch (e: Exception) { null }
+        } catch (e: Exception) {
+            GenResult(error = e.message ?: "Network/generate error")
+        }
     }
 
-    fun animateImage(prompt: String, imageUri: Uri?, duration: String = "5s"): File? {
+    fun animateImage(prompt: String, imageUri: Uri?, duration: String = "5s"): GenResult {
         val isI2V = imageUri != null
-        // MiniMax H3 Chili: explicitly uncensored version of MiniMax H3, better for NSFW than Wan Enhanced
         val model = if (isI2V) "minimax-h3-chili-image-to-video" else "minimax-h3-chili-text-to-video"
         val dataUrl = if (isI2V) {
-            val b64 = uriToBase64(imageUri!!) ?: return null
+            val b64 = uriToBase64(imageUri!!) ?: return GenResult(error = "Could not read reference image")
             "data:image/jpeg;base64,$b64"
         } else null
 
@@ -120,11 +137,11 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
 
         return try {
             client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return null
-                val j = JSONObject(resp.body?.string() ?: return null)
+                if (!resp.isSuccessful) return GenResult(error = "Queue failed HTTP ${resp.code}: ${resp.body?.string()?.take(200)}")
+                val j = JSONObject(resp.body?.string() ?: return GenResult(error = "Empty queue response"))
                 val qid = j.optString("queue_id")
                 val usedModel = j.optString("model", model)
-                if (qid.isBlank()) return null
+                if (qid.isBlank()) return GenResult(error = "No queue_id returned")
 
                 for (i in 1..60) {
                     Thread.sleep(5000)
@@ -138,16 +155,20 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
                         .post(poll.toString().toRequestBody("application/json".toMediaType()))
                         .build()
                     client.newCall(pr).execute().use { prr ->
-                        if (isViolation(prr)) return null
+                        val reason = violationReason(prr)
+                        if (reason != null) return GenResult(error = reason)
                         val ct = prr.header("Content-Type") ?: ""
                         if (prr.isSuccessful && (ct.contains("video") || ct.contains("octet-stream"))) {
-                            val bytes = prr.body?.bytes() ?: return null
-                            return saveBytes(bytes, "mp4")
+                            val bytes = prr.body?.bytes() ?: return GenResult(error = "Empty video body")
+                            val file = saveBytes(bytes, "mp4") ?: return GenResult(error = "Failed to save video")
+                            return GenResult(file = file)
                         }
                     }
                 }
-                null
+                GenResult(error = "Timed out after 5 minutes (video still processing or failed)")
             }
-        } catch (e: Exception) { null }
+        } catch (e: Exception) {
+            GenResult(error = e.message ?: "Video network error")
+        }
     }
 }

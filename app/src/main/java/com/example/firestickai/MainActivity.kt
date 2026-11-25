@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.widget.*
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import java.io.File
@@ -32,12 +33,12 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply { addView(root) }
 
         val title = TextView(this).apply {
-            text = "Uncensored AI (Venice) v1.7"
+            text = "Uncensored AI (Venice) v1.10"
             textSize = 26f
             setTextColor(0xFFFFFFFF.toInt())
         }
         status = TextView(this).apply {
-            text = "Ready. Seedream/Seedance models. Select reference or generate from prompt."
+            text = "Ready. lustify-v8 / MiniMax H3 Chili. Select reference or generate from prompt."
             textSize = 16f
             setTextColor(0xFFCCCCCC.toInt())
             setPadding(0, 8, 0, 16)
@@ -66,11 +67,11 @@ class MainActivity : Activity() {
         root.addView(btn("Select / Upload Reference") { pickImage() })
         root.addView(btn("Set Venice API Key") { setKey() })
         root.addView(btn("Edit Image (with reference)") { doEdit() })
-        root.addView(btn("Animate Video (with reference)") { doAnimate(true) })
-        root.addView(btn("Generate Image (prompt only - Seedream)") { doGenerateImage() })
-        root.addView(btn("Generate Video (prompt only - Seedance)") { doAnimate(false) })
+        root.addView(btn("Animate Video (with reference - Chili)") { doAnimate(true) })
+        root.addView(btn("Generate Image (prompt only - lustify-v8)") { doGenerateImage() })
+        root.addView(btn("Generate Video (prompt only - Chili)") { doAnimate(false) })
         root.addView(TextView(this).apply {
-            text = "Saved Results (click to view full screen, Save to Downloads):"
+            text = "Saved Results (click video for MX Player, image for viewer):"
             textSize = 18f
             setTextColor(0xFFFFFFFF.toInt())
             setPadding(0, 16, 0, 8)
@@ -115,7 +116,13 @@ class MainActivity : Activity() {
                 } else {
                     setBackgroundColor(0xFF444444.toInt())
                 }
-                setOnClickListener { openViewer(Uri.fromFile(file), file.name.endsWith("mp4")) }
+                setOnClickListener {
+                    if (file.name.endsWith("mp4")) {
+                        playInMxPlayer(file)
+                    } else {
+                        openViewer(Uri.fromFile(file), false)
+                    }
+                }
             }
             val saveBtn = Button(this).apply {
                 text = "Save"
@@ -126,6 +133,32 @@ class MainActivity : Activity() {
             row.addView(saveBtn)
             resultsContainer.addView(row)
         }
+    }
+
+    private fun playInMxPlayer(file: File) {
+        val uri = FileProvider.getUriForFile(
+            this,
+            "${packageName}.fileprovider",
+            file
+        )
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "video/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        val packages = listOf("com.mxtech.videoplayer.pro", "com.mxtech.videoplayer.ad")
+        for (pkg in packages) {
+            try {
+                intent.setPackage(pkg)
+                startActivity(intent)
+                return
+            } catch (_: Exception) { /* try next */ }
+        }
+
+        intent.setPackage(null)
+        startActivity(Intent.createChooser(intent, "Play video"))
     }
 
     private fun pickImage() {
@@ -182,9 +215,14 @@ class MainActivity : Activity() {
                 status.text = "Editing..."
                 CoroutineScope(Dispatchers.IO).launch {
                     val client = VeniceApiClient(k, this@MainActivity)
-                    val file = client.editImage(p, selectedImageUri)
+                    val result = client.editImage(p, selectedImageUri)
                     withContext(Dispatchers.Main) {
-                        if (file != null) addResult(file) else status.text = "Edit failed"
+                        if (result.file != null) {
+                            addResult(result.file)
+                        } else {
+                            status.text = "Failed: ${result.error ?: "Unknown error"}"
+                            toast(result.error ?: "Edit failed")
+                        }
                     }
                 }
             }
@@ -196,16 +234,21 @@ class MainActivity : Activity() {
         val k = key() ?: return toast("Set key first")
         val input = EditText(this).apply { hint = "Image prompt" }
         AlertDialog.Builder(this)
-            .setTitle("Generate image (Seedream V5.5 uncensored)")
+            .setTitle("Generate image (lustify-v8)")
             .setView(input)
             .setPositiveButton("Go") { _, _ ->
                 val p = input.text.toString()
                 status.text = "Generating image..."
                 CoroutineScope(Dispatchers.IO).launch {
                     val client = VeniceApiClient(k, this@MainActivity)
-                    val file = client.generateImage(p)
+                    val result = client.generateImage(p)
                     withContext(Dispatchers.Main) {
-                        if (file != null) addResult(file) else status.text = "Generate failed"
+                        if (result.file != null) {
+                            addResult(result.file)
+                        } else {
+                            status.text = "Failed: ${result.error ?: "Unknown error"}"
+                            toast(result.error ?: "Generate failed")
+                        }
                     }
                 }
             }
@@ -220,7 +263,7 @@ class MainActivity : Activity() {
         val dur = arrayOf("5s", "8s", "10s")
         var selectedDur = "5s"
         AlertDialog.Builder(this)
-            .setTitle(if (withRef) "Animate (Seedance 2.5)" else "Generate video (Seedance prompt only)")
+            .setTitle(if (withRef) "Animate (MiniMax H3 Chili)" else "Generate video (Chili prompt only)")
             .setView(input)
             .setSingleChoiceItems(dur, 0) { _, which -> selectedDur = dur[which] }
             .setPositiveButton("Go") { _, _ ->
@@ -228,9 +271,14 @@ class MainActivity : Activity() {
                 status.text = "Queueing video..."
                 CoroutineScope(Dispatchers.IO).launch {
                     val client = VeniceApiClient(k, this@MainActivity)
-                    val file = client.animateImage(p, if (withRef) selectedImageUri else null, selectedDur)
+                    val result = client.animateImage(p, if (withRef) selectedImageUri else null, selectedDur)
                     withContext(Dispatchers.Main) {
-                        if (file != null) addResult(file) else status.text = "Video failed"
+                        if (result.file != null) {
+                            addResult(result.file)
+                        } else {
+                            status.text = "Failed: ${result.error ?: "Unknown error"}"
+                            toast(result.error ?: "Video failed")
+                        }
                     }
                 }
             }
