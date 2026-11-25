@@ -35,12 +35,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.7
-          name: v1.7 - Seedream + Seedance (uncensored)
+          tag_name: v1.8
+          name: v1.8 - Lustify + Wan Enhanced (uncensored)
           body: |
-            v1.7: Switch to Seedream V5.5 (uncensored) for prompt-only images and Seedance 2.5 for videos (5s/8s+ support, better uncensored).
+            v1.8: Prompt-only images now use lustify-v8 (uncensored). Videos use Wan 2.7 Enhanced (uncensored) instead of Seedance to avoid black screens and NSFW filtering on person images and adult prompts.
             
-            Direct download: https://github.com/jake18sted/FireStick-Uncensored-AI/releases/download/v1.7/app-release.apk
+            Direct download: https://github.com/jake18sted/FireStick-Uncensored-AI/releases/download/v1.8/app-release.apk
           files: app/build/outputs/apk/release/*.apk
           draft: false
           prerelease: false

@@ -66,13 +66,11 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
     }
 
     fun generateImage(prompt: String): File? {
-        // Seedream V5.5: Anonymized Uncensored, high quality
+        // Lustify v8: explicitly uncensored photoreal model
         val json = JSONObject().apply {
-            put("model", "seedream-v5-5")
+            put("model", "lustify-v8")
             put("prompt", prompt)
             put("safe_mode", false)
-            put("aspect_ratio", "1:1")
-            put("resolution", "1K")
             put("format", "jpeg")
         }
         val req = Request.Builder()
@@ -91,8 +89,8 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
 
     fun animateImage(prompt: String, imageUri: Uri?, duration: String = "5s"): File? {
         val isI2V = imageUri != null
-        // Seedance 2.5: supports 4-30s, better quality, anonymized
-        val model = if (isI2V) "seedance-2-5-image-to-video-basic" else "seedance-2-5-text-to-video-basic"
+        // Wan 2.7 Enhanced: uncensored, supports person images and NSFW better than Seedance public API
+        val model = if (isI2V) "wan-2-7-enhanced-image-to-video" else "wan-2-7-enhanced-text-to-video"
         val dataUrl = if (isI2V) {
             val b64 = uriToBase64(imageUri!!) ?: return null
             "data:image/jpeg;base64,$b64"
@@ -120,7 +118,7 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
                 val usedModel = j.optString("model", model)
                 if (qid.isBlank()) return null
 
-                for (i in 1..48) {  // longer poll for 8s+
+                for (i in 1..48) {
                     Thread.sleep(5000)
                     val poll = JSONObject().apply {
                         put("model", usedModel)
