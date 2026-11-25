@@ -30,6 +30,13 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
         file
     } catch (e: Exception) { null }
 
+    private fun isViolation(resp: okhttp3.Response): Boolean {
+        val blurred = resp.header("x-venice-is-blurred") == "true"
+        val violation = resp.header("x-venice-is-content-violation") == "true"
+        val adultViolation = resp.header("x-venice-is-adult-model-content-violation") == "true"
+        return blurred || violation || adultViolation
+    }
+
     private fun extractImageBytes(responseBody: String?, contentType: String?): ByteArray? {
         if (responseBody == null) return null
         if (contentType?.contains("image") == true) return responseBody.toByteArray()
@@ -58,7 +65,7 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
             .build()
         return try {
             client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return null
+                if (!resp.isSuccessful || isViolation(resp)) return null
                 val bytes = extractImageBytes(resp.body?.string(), resp.header("Content-Type")) ?: return null
                 saveBytes(bytes, "jpg")
             }
@@ -66,12 +73,13 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
     }
 
     fun generateImage(prompt: String): File? {
-        // Lustify v8: explicitly uncensored photoreal model
+        // Lustify v8: explicitly uncensored photoreal model designed for adult content
         val json = JSONObject().apply {
             put("model", "lustify-v8")
             put("prompt", prompt)
             put("safe_mode", false)
             put("format", "jpeg")
+            put("steps", 30)
         }
         val req = Request.Builder()
             .url("https://api.venice.ai/api/v1/image/generate")
@@ -80,7 +88,7 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
             .build()
         return try {
             client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return null
+                if (!resp.isSuccessful || isViolation(resp)) return null
                 val bytes = extractImageBytes(resp.body?.string(), resp.header("Content-Type")) ?: return null
                 saveBytes(bytes, "jpg")
             }
@@ -89,8 +97,8 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
 
     fun animateImage(prompt: String, imageUri: Uri?, duration: String = "5s"): File? {
         val isI2V = imageUri != null
-        // Wan 2.7 Enhanced: uncensored, supports person images and NSFW better than Seedance public API
-        val model = if (isI2V) "wan-2-7-enhanced-image-to-video" else "wan-2-7-enhanced-text-to-video"
+        // MiniMax H3 Chili: explicitly uncensored version of MiniMax H3, better for NSFW than Wan Enhanced
+        val model = if (isI2V) "minimax-h3-chili-image-to-video" else "minimax-h3-chili-text-to-video"
         val dataUrl = if (isI2V) {
             val b64 = uriToBase64(imageUri!!) ?: return null
             "data:image/jpeg;base64,$b64"
@@ -101,7 +109,7 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
             put("prompt", prompt)
             if (dataUrl != null) put("image_url", dataUrl)
             put("duration", duration)
-            put("resolution", "720p")
+            put("resolution", "768P")
             put("aspect_ratio", "16:9")
         }
         val req = Request.Builder()
@@ -118,7 +126,7 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
                 val usedModel = j.optString("model", model)
                 if (qid.isBlank()) return null
 
-                for (i in 1..48) {
+                for (i in 1..60) {
                     Thread.sleep(5000)
                     val poll = JSONObject().apply {
                         put("model", usedModel)
@@ -130,6 +138,7 @@ class VeniceApiClient(private val apiKey: String, private val context: Context) 
                         .post(poll.toString().toRequestBody("application/json".toMediaType()))
                         .build()
                     client.newCall(pr).execute().use { prr ->
+                        if (isViolation(prr)) return null
                         val ct = prr.header("Content-Type") ?: ""
                         if (prr.isSuccessful && (ct.contains("video") || ct.contains("octet-stream"))) {
                             val bytes = prr.body?.bytes() ?: return null
