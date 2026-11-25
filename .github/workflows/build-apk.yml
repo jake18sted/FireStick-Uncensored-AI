@@ -35,12 +35,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.9
-          name: v1.9 - Lustify + MiniMax H3 Chili (uncensored)
+          tag_name: v1.10
+          name: v1.10 - MX Player + precise errors
           body: |
-            v1.9: Images stay on lustify-v8 (uncensored). Videos switched to MiniMax H3 Chili (explicitly uncensored variant) for better NSFW/prompt handling and flexible durations (4-15s). Added content-violation header checks so black screens are avoided when the model filters.
+            v1.10: Click videos to open in MX Player (Pro or free, with fallback). Generation failures now show the precise reason (content policy, HTTP error, timeout, etc.) instead of a black screen. FileProvider added. UI labels updated for lustify-v8 / MiniMax H3 Chili.
             
-            Direct download: https://github.com/jake18sted/FireStick-Uncensored-AI/releases/download/v1.9/app-release.apk
+            Direct download: https://github.com/jake18sted/FireStick-Uncensored-AI/releases/download/v1.10/app-release.apk
           files: app/build/outputs/apk/release/*.apk
           draft: false
           prerelease: false
