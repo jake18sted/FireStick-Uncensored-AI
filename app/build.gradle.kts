@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.firestickai"
         minSdk = 25
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.10"
+        versionCode = 11
+        versionName = "1.11"
     }
 
     buildTypes {

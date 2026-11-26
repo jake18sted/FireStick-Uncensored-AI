@@ -13,7 +13,7 @@ import org.json.JSONArray
 import java.io.File
 
 class MainActivity : Activity() {
-    private var selectedImageUri: Uri? = null
+    private val selectedImageUris = mutableListOf<Uri>()
     private val REQUEST_PICK = 1001
     private val prefs by lazy { getSharedPreferences("venice", 0) }
     private lateinit var status: TextView
@@ -33,12 +33,12 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply { addView(root) }
 
         val title = TextView(this).apply {
-            text = "Uncensored AI (Venice) v1.10"
+            text = "Uncensored AI (Venice) v1.11"
             textSize = 26f
             setTextColor(0xFFFFFFFF.toInt())
         }
         status = TextView(this).apply {
-            text = "Ready. lustify-v8 / MiniMax H3 Chili. Select reference or generate from prompt."
+            text = "Ready. Seedream V5.5 / Seedance 2.5. Select 1+ references or prompt only."
             textSize = 16f
             setTextColor(0xFFCCCCCC.toInt())
             setPadding(0, 8, 0, 16)
@@ -48,7 +48,7 @@ class MainActivity : Activity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
             setBackgroundColor(0xFF222222.toInt())
             isFocusable = true
-            setOnClickListener { selectedImageUri?.let { openViewer(it, false) } }
+            setOnClickListener { if (selectedImageUris.isNotEmpty()) openViewer(selectedImageUris.first(), false) }
         }
 
         fun btn(label: String, action: () -> Unit) = Button(this).apply {
@@ -64,12 +64,13 @@ class MainActivity : Activity() {
         root.addView(title)
         root.addView(status)
         root.addView(preview)
-        root.addView(btn("Select / Upload Reference") { pickImage() })
+        root.addView(btn("Select / Upload References (multi)") { pickImages() })
+        root.addView(btn("Clear References") { selectedImageUris.clear(); preview.setImageDrawable(null); status.text = "References cleared" })
         root.addView(btn("Set Venice API Key") { setKey() })
-        root.addView(btn("Edit Image (with reference)") { doEdit() })
-        root.addView(btn("Animate Video (with reference - Chili)") { doAnimate(true) })
-        root.addView(btn("Generate Image (prompt only - lustify-v8)") { doGenerateImage() })
-        root.addView(btn("Generate Video (prompt only - Chili)") { doAnimate(false) })
+        root.addView(btn("Edit Image (with reference(s))") { doEdit() })
+        root.addView(btn("Animate Video (with reference(s) - Seedance)") { doAnimate(true) })
+        root.addView(btn("Generate Image (prompt only - Seedream)") { doGenerateImage() })
+        root.addView(btn("Generate Video (prompt only - Seedance)") { doAnimate(false) })
         root.addView(TextView(this).apply {
             text = "Saved Results (click video for MX Player, image for viewer):"
             textSize = 18f
@@ -161,13 +162,14 @@ class MainActivity : Activity() {
         startActivity(Intent.createChooser(intent, "Play video"))
     }
 
-    private fun pickImage() {
+    private fun pickImages() {
         try {
             val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
                 type = "image/*"
                 addCategory(Intent.CATEGORY_OPENABLE)
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
             }
-            startActivityForResult(Intent.createChooser(intent, "Select"), REQUEST_PICK)
+            startActivityForResult(Intent.createChooser(intent, "Select references"), REQUEST_PICK)
         } catch (e: Exception) {
             Toast.makeText(this, "No picker", Toast.LENGTH_SHORT).show()
         }
@@ -176,14 +178,20 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_PICK && resultCode == RESULT_OK) {
-            data?.data?.let {
-                selectedImageUri = it
+            selectedImageUris.clear()
+            data?.clipData?.let { clip ->
+                for (i in 0 until clip.itemCount) {
+                    clip.getItemAt(i).uri?.let { selectedImageUris.add(it) }
+                }
+            } ?: data?.data?.let { selectedImageUris.add(it) }
+
+            if (selectedImageUris.isNotEmpty()) {
                 try {
-                    contentResolver.openInputStream(it)?.use { stream ->
+                    contentResolver.openInputStream(selectedImageUris.first())?.use { stream ->
                         preview.setImageBitmap(BitmapFactory.decodeStream(stream))
                     }
                 } catch (e: Exception) {}
-                status.text = "Reference selected"
+                status.text = "${selectedImageUris.size} reference(s) selected"
             }
         }
     }
@@ -205,7 +213,7 @@ class MainActivity : Activity() {
 
     private fun doEdit() {
         val k = key() ?: return toast("Set key first")
-        if (selectedImageUri == null) return toast("Select reference first")
+        if (selectedImageUris.isEmpty()) return toast("Select reference first")
         val input = EditText(this).apply { setText("high quality, keep person") }
         AlertDialog.Builder(this)
             .setTitle("Edit prompt")
@@ -215,7 +223,7 @@ class MainActivity : Activity() {
                 status.text = "Editing..."
                 CoroutineScope(Dispatchers.IO).launch {
                     val client = VeniceApiClient(k, this@MainActivity)
-                    val result = client.editImage(p, selectedImageUri)
+                    val result = client.editImage(p, selectedImageUris)
                     withContext(Dispatchers.Main) {
                         if (result.file != null) {
                             addResult(result.file)
@@ -234,7 +242,7 @@ class MainActivity : Activity() {
         val k = key() ?: return toast("Set key first")
         val input = EditText(this).apply { hint = "Image prompt" }
         AlertDialog.Builder(this)
-            .setTitle("Generate image (lustify-v8)")
+            .setTitle("Generate image (Seedream V5.5)")
             .setView(input)
             .setPositiveButton("Go") { _, _ ->
                 val p = input.text.toString()
@@ -258,12 +266,12 @@ class MainActivity : Activity() {
 
     private fun doAnimate(withRef: Boolean) {
         val k = key() ?: return toast("Set key first")
-        if (withRef && selectedImageUri == null) return toast("Select reference first")
+        if (withRef && selectedImageUris.isEmpty()) return toast("Select reference first")
         val input = EditText(this).apply { hint = "Motion prompt" }
-        val dur = arrayOf("5s", "8s", "10s")
+        val dur = arrayOf("5s", "8s", "10s", "15s")
         var selectedDur = "5s"
         AlertDialog.Builder(this)
-            .setTitle(if (withRef) "Animate (MiniMax H3 Chili)" else "Generate video (Chili prompt only)")
+            .setTitle(if (withRef) "Animate (Seedance 2.5)" else "Generate video (Seedance prompt only)")
             .setView(input)
             .setSingleChoiceItems(dur, 0) { _, which -> selectedDur = dur[which] }
             .setPositiveButton("Go") { _, _ ->
@@ -271,7 +279,8 @@ class MainActivity : Activity() {
                 status.text = "Queueing video..."
                 CoroutineScope(Dispatchers.IO).launch {
                     val client = VeniceApiClient(k, this@MainActivity)
-                    val result = client.animateImage(p, if (withRef) selectedImageUri else null, selectedDur)
+                    val refs = if (withRef) selectedImageUris else emptyList()
+                    val result = client.animateImage(p, refs, selectedDur)
                     withContext(Dispatchers.Main) {
                         if (result.file != null) {
                             addResult(result.file)
